@@ -1,0 +1,21 @@
+# Raw data is too large for GitHub. Keep the folder, ignore the files.
+**/data/raw/*
+!**/data/raw/.gitkeep
+*.zip
+
+# Never commit your Kaggle API key
+kaggle.json
+
+# Python and Jupyter clutter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# Excel temp files (for Project 2)
+~$*
+
+# OS clutter
+.DS_Store
+Thumbs.db
