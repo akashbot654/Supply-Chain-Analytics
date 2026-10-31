@@ -6,6 +6,8 @@
 # Never commit your Kaggle API key
 kaggle.json
 
+.vscode/
+
 # Python and Jupyter clutter
 __pycache__/
 *.pyc

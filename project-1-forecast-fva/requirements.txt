@@ -5,5 +5,7 @@ seaborn
 statsmodels
 scikit-learn
 lightgbm
+pyarrow
 jupyter
+ipykernel
 kaggle
