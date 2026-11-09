@@ -9,7 +9,15 @@ How much safety stock does each SKU need to hit a target service level, what doe
 - Inputs come from Project 1's processed weekly data (`project-1-forecast-fva/data/processed/`)
 - `data/sku_policy_inputs_CA_1.csv`: one row per SKU with average demand, 1-week forecast error (naive and moving average), bias, and a slow-mover flag
 - `data/holdout_demand_CA_1.csv`: actual weekly demand in the 13-week holdout quarter, used to test the policy
-- M5 has no lead times, unit costs, or ordering costs. These are **assumptions** set on the Excel Assumptions sheet and stated in this README
+- M5 has no lead times, unit costs, or ordering costs. These are **assumptions** set on the Excel Assumptions sheet:
+
+| Assumption | Base case | Why |
+|---|---|---|
+| Lead time $L$ | 1 week | Store shelves are replenished weekly from a distribution center |
+| Unit cost $C$ | 70% of last training-period shelf price | M5 has retail prices only |
+| Holding rate $h$ | 25% per year | Typical range is 20 to 30% (capital, space, shrink) |
+| Cost per order $S$ | $5 per SKU order | Handling and receiving at store level |
+| Service target | 95% cycle service level ($z$ = 1.645) | Common retail base case; swept from 90% to 99% in VBA |
 
 ## Approach
 | Step | What it does | Status |

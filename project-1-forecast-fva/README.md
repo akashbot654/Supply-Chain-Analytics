@@ -84,7 +84,7 @@ Walmart M5 Forecasting - Accuracy (Kaggle): https://www.kaggle.com/c/m5-forecast
 - One store, one 13-week test quarter (includes Easter 2016). Results may differ in other stores and seasons
 - The moving average and the horizon split were chosen on the same test quarter they were scored on
 - LightGBM was not tuned. Test-quarter prices and events were treated as known in advance
-- Holt-Winters used default fitting. Some per-SKU fits raise convergence warnings; notebook 02 reports how many. Their forecasts were kept, which may understate Holt-Winters a little
+- Holt-Winters used default fitting. 329 of 2,717 per-SKU fits (12.1%) raised a convergence warning. Their forecasts were kept, which may understate Holt-Winters a little
 - 332 SKUs with under 2 years of history were excluded from the benchmark
 
 ## How to Run
