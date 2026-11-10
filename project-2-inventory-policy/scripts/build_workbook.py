@@ -61,6 +61,8 @@ rows = [
     ("Target cycle service level", 0.95, "CSL", "ServiceLevel",
      "Probability of no stockout during one replenishment cycle. Base case 95%", "0.0%"),
     ("Weeks per year", 52, "", "WeeksPerYear", "Constant", "0"),
+    ("Max order size (weeks of supply)", 4, "Wmax", "MaxWeeksSupply",
+     "Assumption: shelf space and shelf life limit one order to 4 weeks of average demand", "0"),
 ]
 for i, (label, val, sym, name, why, fmt) in enumerate(rows, start=5):
     a[f"A{i}"], a[f"B{i}"], a[f"C{i}"], a[f"D{i}"] = label, val, sym, why
@@ -90,8 +92,9 @@ formulas = [
     ("C = price x CostPct", "Unit cost, $"),
     ("H = h x C", "Holding cost per unit per year, $"),
     ("EOQ = SQRT(2 x D x S / H)", "Economic order quantity, units"),
-    ("Avg inventory = EOQ / 2 + SS", "Cycle stock plus safety stock, units"),
-    ("Annual cost = H x Avg inventory + S x D / EOQ", "Holding cost plus ordering cost, $ per year"),
+    ("Q = MIN(EOQ, Wmax x d)", "Order quantity used: EOQ capped at Wmax weeks of supply"),
+    ("Avg inventory = Q / 2 + SS", "Cycle stock plus safety stock, units"),
+    ("Annual cost = H x Avg inventory + S x D / Q", "Holding cost plus ordering cost, $ per year"),
 ]
 for j, (f, d) in enumerate(formulas, start=fr + 1):
     a[f"A{j}"], a[f"B{j}"] = f, d
@@ -122,17 +125,19 @@ cols = [
     ("Safety stock SS (units)", 10, "#,##0.0", "f", "=z*L{r}"),
     ("Reorder point ROP (units)", 10, "#,##0.0", "f", "=F{r}*LeadTime+M{r}"),
     ("EOQ (units)", 10, "#,##0.0", "f", "=IF(AND(J{r}>0,K{r}>0),SQRT(2*J{r}*OrderCost/K{r}),0)"),
-    ("Avg inventory (units)", 10, "#,##0.0", "f", "=O{r}/2+M{r}"),
-    ("Avg inventory ($)", 11, "$#,##0", "f", "=P{r}*I{r}"),
-    ("Annual holding cost ($)", 11, "$#,##0", "f", "=K{r}*P{r}"),
-    ("Annual ordering cost ($)", 11, "$#,##0", "f", "=IF(O{r}>0,OrderCost*J{r}/O{r},0)"),
-    ("Total annual cost ($)", 11, "$#,##0", "f", "=R{r}+S{r}"),
+    ("Order qty Q (units, capped)", 10, "#,##0.0", "f", "=IF(O{r}>0,MIN(O{r},MaxWeeksSupply*F{r}),0)"),
+    ("Avg inventory (units)", 10, "#,##0.0", "f", "=P{r}/2+M{r}"),
+    ("Avg inventory ($)", 11, "$#,##0", "f", "=Q{r}*I{r}"),
+    ("Annual holding cost ($)", 11, "$#,##0", "f", "=K{r}*Q{r}"),
+    ("Annual ordering cost ($)", 11, "$#,##0", "f", "=IF(P{r}>0,OrderCost*J{r}/P{r},0)"),
+    ("Total annual cost ($)", 11, "$#,##0", "f", "=S{r}+T{r}"),
     ("SS $ moving avg", 11, "$#,##0.00", "f", "=M{r}*I{r}"),
     ("SS units naive", 10, "#,##0.0", "f", "=z*G{r}*SQRT(LeadTime)"),
-    ("SS $ naive", 11, "$#,##0.00", "f", "=V{r}*I{r}"),
-    ("SS $ saved by moving avg", 11, "$#,##0.00;[Red]($#,##0.00);-", "f", "=W{r}-U{r}"),
+    ("SS $ naive", 11, "$#,##0.00", "f", "=W{r}*I{r}"),
+    ("SS $ saved by moving avg", 11, "$#,##0.00;[Red]($#,##0.00);-", "f", "=X{r}-V{r}"),
+    ("Order capped?", 9, "@", "f", "=IF(P{r}<O{r},\"Yes\",\"No\")"),
 ]
-assert get_column_letter(len(cols)) == "X"
+assert get_column_letter(len(cols)) == "Z"
 
 s.row_dimensions[1].height = 48
 for j, (h, w, _, kind, _) in enumerate(cols, start=1):
@@ -162,7 +167,7 @@ for i, row in enumerate(df.itertuples(index=False), start=2):
 
 LAST = N + 1
 s.freeze_panes = "B2"
-s.auto_filter.ref = f"A1:X{LAST}"
+s.auto_filter.ref = f"A1:Z{LAST}"
 
 # ---------------------------------------------------------------- Summary
 m = wb.create_sheet("Summary")
@@ -177,7 +182,7 @@ def block(top, title, group_col, groups):
     m.cell(row=top, column=1, value=title).font = BOLD
     hdr = ["Group", "SKUs", "Safety stock (units)", "Safety stock $ (moving avg)",
            "Safety stock $ (naive)", "SS $ saved by moving avg", "SS $ saved (%)",
-           "Avg inventory $", "Total annual cost $"]
+           "Avg inventory $", "Total annual cost $", "SKUs with order capped"]
     for j, h in enumerate(hdr, start=1):
         c = m.cell(row=top + 1, column=j, value=h)
         c.font, c.fill = HDR_FONT, HDR_FILL
@@ -190,30 +195,35 @@ def block(top, title, group_col, groups):
         m.cell(row=r, column=1, value=g).font = BLACK
         m.cell(row=r, column=2, value=f"=COUNTIFS({crit})")
         m.cell(row=r, column=3, value=f"=SUMIFS({R('M')},{crit})")
-        m.cell(row=r, column=4, value=f"=SUMIFS({R('U')},{crit})")
-        m.cell(row=r, column=5, value=f"=SUMIFS({R('W')},{crit})")
+        m.cell(row=r, column=4, value=f"=SUMIFS({R('V')},{crit})")
+        m.cell(row=r, column=5, value=f"=SUMIFS({R('X')},{crit})")
         m.cell(row=r, column=6, value=f"=E{r}-D{r}")
         m.cell(row=r, column=7, value=f"=IF(E{r}>0,F{r}/E{r},0)")
-        m.cell(row=r, column=8, value=f"=SUMIFS({R('Q')},{crit})")
-        m.cell(row=r, column=9, value=f"=SUMIFS({R('T')},{crit})")
+        m.cell(row=r, column=8, value=f"=SUMIFS({R('R')},{crit})")
+        m.cell(row=r, column=9, value=f"=SUMIFS({R('U')},{crit})")
+        m.cell(row=r, column=10, value=f"=COUNTIFS({crit},{R('Z')},\"Yes\")")
     tr = first + len(groups)
     m.cell(row=tr, column=1, value="Total").font = BOLD
-    for j in [2, 3, 4, 5, 6, 8, 9]:
+    for j in [2, 3, 4, 5, 6, 8, 9, 10]:
         L = get_column_letter(j)
         m.cell(row=tr, column=j, value=f"=SUM({L}{first}:{L}{tr - 1})").font = BOLD
     m.cell(row=tr, column=7, value=f"=IF(E{tr}>0,F{tr}/E{tr},0)").font = BOLD
     fmts = {2: "#,##0", 3: "#,##0", 4: "$#,##0", 5: "$#,##0", 6: "$#,##0;[Red]($#,##0);-",
-            7: "0.0%;[Red]-0.0%;-", 8: "$#,##0", 9: "$#,##0"}
+            7: "0.0%;[Red]-0.0%;-", 8: "$#,##0", 9: "$#,##0", 10: "#,##0"}
     for r in range(first, tr + 1):
         for j, f in fmts.items():
             m.cell(row=r, column=j).number_format = f
             if r < tr:
-                m.cell(row=r, column=j).font = GREEN if j in (2, 3, 4, 5, 8, 9) else BLACK
-        for j in range(1, 10):
+                m.cell(row=r, column=j).font = GREEN if j in (2, 3, 4, 5, 8, 9, 10) else BLACK
+        for j in range(1, 11):
             m.cell(row=r, column=j).border = BOX
     return tr
 
 end1 = block(4, "By category", "C", ["FOODS", "HOBBIES", "HOUSEHOLD"])
+# Named totals, read by the VBA scenario sweep
+for name, col in [("Tot_SS_Units", "C"), ("Tot_SS_MA", "D"), ("Tot_SS_Naive", "E"),
+                  ("Tot_AvgInv", "H"), ("Tot_Cost", "I"), ("Tot_Capped", "J")]:
+    wb.defined_names[name] = DefinedName(name, attr_text=f"Summary!${col}${end1}")
 end2 = block(end1 + 3, "Regular vs slow movers (slow = under 1 unit/week or over 50% zero weeks)",
              "D", ["No", "Yes"])
 m.cell(row=end2 - 2, column=1, value="Regular (No)")
@@ -226,12 +236,13 @@ for k, t in enumerate([
     "Safety stock is proportional to forecast error, so a lower-error forecast needs less buffer for the same service level.",
     "SS $ saved compares safety stock valued at unit cost under naive error vs moving average error. It is inventory $ tied up, not annual cost.",
     "Slow movers use the same formula, but their lumpy demand breaks the normal-error assumption. Treat their numbers as rough.",
+    "Order size is EOQ capped at the max weeks of supply (Assumptions sheet). Pure EOQ suggested months of stock per order for cheap items, which a shelf cannot hold.",
     "All dollar figures depend on the assumptions on the Assumptions sheet.",
 ], start=note + 1):
     m.cell(row=k, column=1, value=f"- {t}").font = BLACK
 
 m.column_dimensions["A"].width = 18
-for j in range(2, 10):
+for j in range(2, 11):
     m.column_dimensions[get_column_letter(j)].width = 15
 
 # ---------------------------------------------------------------- SKU_Example
@@ -265,10 +276,12 @@ steps = [
     ("Holding cost H ($/unit/yr)", "=B17*HoldRate", "$#,##0.00", "h x C", "Cost to keep one unit for a year"),
     ("EOQ (units)", "=IF(AND(B18>0,B19>0),SQRT(2*B18*OrderCost/B19),0)", "#,##0.0",
      "SQRT(2 x D x S / H)", "Order size that balances ordering and holding cost"),
-    ("Avg inventory (units)", "=B20/2+B15", "#,##0.0", "EOQ / 2 + SS", "Cycle stock plus safety stock"),
-    ("Annual cost ($)", "=B19*B21+IF(B20>0,OrderCost*B18/B20,0)", "$#,##0.00",
-     "H x avg inv + S x D / EOQ", "Holding plus ordering cost per year"),
-    ("Check vs SKU_Policy total cost", look("T"), "$#,##0.00", "lookup", "Should equal the row above"),
+    ("Order qty Q (units)", "=IF(B20>0,MIN(B20,MaxWeeksSupply*B10),0)", "#,##0.0",
+     "MIN(EOQ, Wmax x d)", "EOQ capped at the weeks of supply a shelf can hold"),
+    ("Avg inventory (units)", "=B21/2+B15", "#,##0.0", "Q / 2 + SS", "Cycle stock plus safety stock"),
+    ("Annual cost ($)", "=B19*B22+IF(B21>0,OrderCost*B18/B21,0)", "$#,##0.00",
+     "H x avg inv + S x D / Q", "Holding plus ordering cost per year"),
+    ("Check vs SKU_Policy total cost", look("U"), "$#,##0.00", "lookup", "Should equal the row above"),
 ]
 for k, (lab, f, fmt, formula_txt, meaning) in enumerate(steps, start=7):
     e[f"A{k}"], e[f"B{k}"], e[f"C{k}"], e[f"D{k}"] = lab, f, formula_txt, meaning
