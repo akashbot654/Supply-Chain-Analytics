@@ -1,6 +1,6 @@
 # Project 2: Forecast-to-Inventory Policy Tool
 
-**Tools:** Python (data prep), Excel (policy model), VBA (scenario automation) | **Data:** Walmart M5, store CA_1 (same 2,717 SKUs as [Project 1](../project-1-forecast-fva/)) | **Status:** In progress (Step 2 of 6 done)
+**Tools:** Python (data prep), Excel (policy model), VBA (scenario automation) | **Data:** Walmart M5, store CA_1 (same 2,717 SKUs as [Project 1](../project-1-forecast-fva/)) | **Status:** In progress (Step 4 of 6 done)
 
 ## Business Question
 How much safety stock does each SKU need to hit a target service level, what does that inventory cost to hold, and how many dollars does a more accurate forecast free up?
@@ -9,6 +9,7 @@ How much safety stock does each SKU need to hit a target service level, what doe
 - Inputs come from Project 1's processed weekly data (`project-1-forecast-fva/data/processed/`)
 - `data/sku_policy_inputs_CA_1.csv`: one row per SKU with average demand, 1-week forecast error (naive and moving average), bias, and a slow-mover flag
 - `data/holdout_demand_CA_1.csv`: actual weekly demand in the 13-week holdout quarter, used to test the policy
+- `data/holdout_results_CA_1.csv`: per-SKU holdout simulation results (lost units, replenishment cycles, stockout cycles, average inventory) from notebook 02
 - M5 has no lead times, unit costs, or ordering costs. These are **assumptions** set on the Excel Assumptions sheet:
 
 | Assumption | Base case | Why |
@@ -26,7 +27,7 @@ How much safety stock does each SKU need to hit a target service level, what doe
 | 1 | `notebooks/01_policy_inputs.ipynb`: rolling 1-week-ahead backtest over the last 52 training weeks to measure forecast error per SKU | Built |
 | 2 | `excel/inventory_policy_CA_1.xlsx` (built by `scripts/build_workbook.py`): Assumptions, Summary, SKU_Policy (2,717 rows of live formulas), and SKU_Example (one SKU worked end to end) | Built |
 | 3 | `vba/ScenarioSweep.bas`: macro that runs 12 scenarios (service level 90% to 99.5%, lead time 1 and 2 weeks), writes a Scenarios sheet and trade-off chart, and restores the inputs | Built, to run in Excel |
-| 4 | Holdout test: simulate the policy on the 13-week holdout quarter and compare achieved vs target service level | Planned |
+| 4 | `notebooks/02_holdout_test.ipynb`: replay the 13-week holdout quarter week by week (weekly review, 1-week lead time, lost sales) and compare achieved vs target service level. Tests the workbook policy and a periodic review version that protects review period + lead time | Built |
 | 5 | Dollar impact: safety stock cost with naive error vs moving average error | Planned |
 | 6 | Recommendation, README results, resume bullets, interview pitch | Planned |
 
@@ -55,7 +56,7 @@ _To be completed._
 ## How to Run
 1. Complete Project 1 first (this project reads its processed data)
 2. Install requirements: `pip install -r requirements.txt` (Python 3.11)
-3. Run `notebooks/01_policy_inputs.ipynb`
+3. Run `notebooks/01_policy_inputs.ipynb`, then `notebooks/02_holdout_test.ipynb`
 4. Open `excel/inventory_policy_CA_1.xlsx` and change the yellow cells on the Assumptions sheet. To rebuild the workbook from the CSV: `pip install openpyxl` then `python scripts/build_workbook.py data/sku_policy_inputs_CA_1.csv excel/inventory_policy_CA_1.xlsx`
 
 ## Folder Structure

@@ -1,6 +1,7 @@
 # Python 3.11. Same environment as Project 1.
 pandas==3.1.0
 numpy==2.4.6
+matplotlib==3.11.2
 pyarrow==26.0.0
 jupyter==1.1.1
 ipykernel==7.4.0
