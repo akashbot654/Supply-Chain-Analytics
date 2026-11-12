@@ -52,6 +52,8 @@ for c, h in zip("ABCD", ["Assumption", "Value", "Symbol", "Why / source"]):
 rows = [
     ("Lead time (weeks)", 1, "L", "LeadTime",
      "Assumption: store shelves are replenished weekly from a distribution center", "0"),
+    ("Review period (weeks)", 1, "R", "ReviewPeriod",
+     "Assumption: the store checks stock and places orders once a week (holdout test, notebook 02)", "0"),
     ("Unit cost as % of shelf price", 0.70, "C / price", "CostPct",
      "Assumption: M5 has retail prices only; cost = 70% of last training-period price", "0%"),
     ("Holding rate (% of unit cost per year)", 0.25, "h", "HoldRate",
@@ -80,20 +82,29 @@ for c in "ABCD":
 wb.defined_names["z"] = DefinedName("z", attr_text=f"Assumptions!$B${zr}")
 z_row = zr
 
-fr = zr + 2
+pr = zr + 1
+a[f"A{pr}"], a[f"B{pr}"], a[f"C{pr}"] = "Protection interval (weeks)", "=ReviewPeriod+LeadTime", "P = R + L"
+a[f"D{pr}"] = ("Calculated: with weekly review, stock must last until the order placed at the NEXT review "
+               "arrives, so the buffer covers R + L, not just L")
+a[f"B{pr}"].number_format = "0"
+for c in "ABCD":
+    a[f"{c}{pr}"].font = BLACK
+wb.defined_names["Protect"] = DefinedName("Protect", attr_text=f"Assumptions!$B${pr}")
+
+fr = pr + 2
 a[f"A{fr}"] = "Formulas used on SKU_Policy"
 a[f"A{fr}"].font = BOLD
 formulas = [
     ("sigma_1", "RMSE of 1-week-ahead forecast error, units (from notebook 01)"),
-    ("sigma_L = sigma_1 x SQRT(L)", "Forecast error over the lead time (assumes independent weekly errors)"),
-    ("SS = z x sigma_L", "Safety stock, units"),
-    ("ROP = d x L + SS", "Reorder point, units. d = average weekly demand"),
+    ("sigma_P = sigma_1 x SQRT(R + L)", "Forecast error over the protection interval (assumes independent weekly errors)"),
+    ("SS = z x sigma_P", "Safety stock, units"),
+    ("ROP = d x (R + L) + SS", "Reorder point, units. d = average weekly demand"),
     ("D = d x 52", "Annual demand, units"),
     ("C = price x CostPct", "Unit cost, $"),
     ("H = h x C", "Holding cost per unit per year, $"),
     ("EOQ = SQRT(2 x D x S / H)", "Economic order quantity, units"),
     ("Q = MIN(EOQ, Wmax x d)", "Order quantity used: EOQ capped at Wmax weeks of supply"),
-    ("Avg inventory = Q / 2 + SS", "Cycle stock plus safety stock, units"),
+    ("Avg inventory = Q / 2 + SS + d x R / 2", "Cycle stock + safety stock + half a review period of demand (orders go out only at reviews, so on average stock is d x R / 2 above SS when an order arrives), units"),
     ("Annual cost = H x Avg inventory + S x D / Q", "Holding cost plus ordering cost, $ per year"),
 ]
 for j, (f, d) in enumerate(formulas, start=fr + 1):
@@ -121,18 +132,18 @@ cols = [
     ("Unit cost C ($)", 10, "$#,##0.00", "f", "=E{r}*CostPct"),
     ("Annual demand D (units)", 11, "#,##0", "f", "=F{r}*WeeksPerYear"),
     ("Holding cost H ($/unit/yr)", 11, "$#,##0.00", "f", "=I{r}*HoldRate"),
-    ("sigma_L moving avg (units)", 10, "#,##0.00", "f", "=H{r}*SQRT(LeadTime)"),
+    ("sigma_P moving avg (units, over R + L)", 10, "#,##0.00", "f", "=H{r}*SQRT(Protect)"),
     ("Safety stock SS (units)", 10, "#,##0.0", "f", "=z*L{r}"),
-    ("Reorder point ROP (units)", 10, "#,##0.0", "f", "=F{r}*LeadTime+M{r}"),
+    ("Reorder point ROP (units)", 10, "#,##0.0", "f", "=F{r}*Protect+M{r}"),
     ("EOQ (units)", 10, "#,##0.0", "f", "=IF(AND(J{r}>0,K{r}>0),SQRT(2*J{r}*OrderCost/K{r}),0)"),
     ("Order qty Q (units, capped)", 10, "#,##0.0", "f", "=IF(O{r}>0,MIN(O{r},MaxWeeksSupply*F{r}),0)"),
-    ("Avg inventory (units)", 10, "#,##0.0", "f", "=P{r}/2+M{r}"),
+    ("Avg inventory (units)", 10, "#,##0.0", "f", "=P{r}/2+M{r}+F{r}*ReviewPeriod/2"),
     ("Avg inventory ($)", 11, "$#,##0", "f", "=Q{r}*I{r}"),
     ("Annual holding cost ($)", 11, "$#,##0", "f", "=K{r}*Q{r}"),
     ("Annual ordering cost ($)", 11, "$#,##0", "f", "=IF(P{r}>0,OrderCost*J{r}/P{r},0)"),
     ("Total annual cost ($)", 11, "$#,##0", "f", "=S{r}+T{r}"),
     ("SS $ moving avg", 11, "$#,##0.00", "f", "=M{r}*I{r}"),
-    ("SS units naive", 10, "#,##0.0", "f", "=z*G{r}*SQRT(LeadTime)"),
+    ("SS units naive", 10, "#,##0.0", "f", "=z*G{r}*SQRT(Protect)"),
     ("SS $ naive", 11, "$#,##0.00", "f", "=W{r}*I{r}"),
     ("SS $ saved by moving avg", 11, "$#,##0.00;[Red]($#,##0.00);-", "f", "=X{r}-V{r}"),
     ("Order capped?", 9, "@", "f", "=IF(P{r}<O{r},\"Yes\",\"No\")"),
@@ -173,7 +184,7 @@ s.auto_filter.ref = f"A1:Z{LAST}"
 m = wb.create_sheet("Summary")
 m["A1"] = "Inventory policy summary, store CA_1"
 m["A1"].font = TITLE
-m["A2"] = "=\"Base case: lead time \"&LeadTime&\" wk, \"&TEXT(ServiceLevel,\"0.0%\")&\" service level (z = \"&TEXT(z,\"0.000\")&\"), cost \"&TEXT(CostPct,\"0%\")&\" of price, holding \"&TEXT(HoldRate,\"0%\")&\"/yr, $\"&TEXT(OrderCost,\"0.00\")&\" per order\""
+m["A2"] = "=\"Base case: review every \"&ReviewPeriod&\" wk, lead time \"&LeadTime&\" wk, \"&TEXT(ServiceLevel,\"0.0%\")&\" service level (z = \"&TEXT(z,\"0.000\")&\"), cost \"&TEXT(CostPct,\"0%\")&\" of price, holding \"&TEXT(HoldRate,\"0%\")&\"/yr, $\"&TEXT(OrderCost,\"0.00\")&\" per order\""
 m["A2"].font = Font(name=FONT, italic=True)
 
 R = lambda col: f"SKU_Policy!${col}$2:${col}${LAST}"
@@ -237,6 +248,7 @@ for k, t in enumerate([
     "SS $ saved compares safety stock valued at unit cost under naive error vs moving average error. It is inventory $ tied up, not annual cost.",
     "Slow movers use the same formula, but their lumpy demand breaks the normal-error assumption. Treat their numbers as rough.",
     "Order size is EOQ capped at the max weeks of supply (Assumptions sheet). Pure EOQ suggested months of stock per order for cheap items, which a shelf cannot hold.",
+    "Safety stock covers the review period plus the lead time (R + L), because the store only orders at its weekly review. The holdout test (notebook 02) showed a buffer for L alone reached about 60% service, not 95%.",
     "All dollar figures depend on the assumptions on the Assumptions sheet.",
 ], start=note + 1):
     m.cell(row=k, column=1, value=f"- {t}").font = BLACK
@@ -267,26 +279,29 @@ steps = [
     ("Avg weekly demand d (units)", look("F"), "#,##0.00", "input", "Expected sales per week"),
     ("sigma_1 moving avg (units)", look("H"), "#,##0.00", "input", "Typical size of a 1-week forecast miss"),
     ("Lead time L (weeks)", "=LeadTime", "0", "assumption", "Time from order to shelf"),
-    ("sigma_L (units)", "=B11*SQRT(B12)", "#,##0.00", "sigma_1 x SQRT(L)", "Forecast miss over the whole lead time"),
+    ("Review period R (weeks)", "=ReviewPeriod", "0", "assumption", "Time between stock checks / orders"),
+    ("Protection interval P (weeks)", "=B12+B13", "0", "R + L", "Stock must last until the next order can arrive"),
+    ("sigma_P (units)", "=B11*SQRT(B14)", "#,##0.00", "sigma_1 x SQRT(R + L)", "Forecast miss over the protection interval"),
     ("z", "=z", "0.000", "NORMSINV(CSL)", "How many sigmas of buffer the service target needs"),
-    ("Safety stock SS (units)", "=B14*B13", "#,##0.0", "z x sigma_L", "Buffer held for forecast misses"),
-    ("Reorder point ROP (units)", "=B10*B12+B15", "#,##0.0", "d x L + SS", "Order when stock falls to this level"),
+    ("Safety stock SS (units)", "=B16*B15", "#,##0.0", "z x sigma_P", "Buffer held for forecast misses"),
+    ("Reorder point ROP (units)", "=B10*B14+B17", "#,##0.0", "d x (R + L) + SS", "At a review, order if stock (incl. on order) is at or below this"),
     ("Unit cost C ($)", "=B9*CostPct", "$#,##0.00", "price x CostPct", "Cost to the retailer"),
     ("Annual demand D (units)", "=B10*WeeksPerYear", "#,##0", "d x 52", ""),
-    ("Holding cost H ($/unit/yr)", "=B17*HoldRate", "$#,##0.00", "h x C", "Cost to keep one unit for a year"),
-    ("EOQ (units)", "=IF(AND(B18>0,B19>0),SQRT(2*B18*OrderCost/B19),0)", "#,##0.0",
+    ("Holding cost H ($/unit/yr)", "=B19*HoldRate", "$#,##0.00", "h x C", "Cost to keep one unit for a year"),
+    ("EOQ (units)", "=IF(AND(B20>0,B21>0),SQRT(2*B20*OrderCost/B21),0)", "#,##0.0",
      "SQRT(2 x D x S / H)", "Order size that balances ordering and holding cost"),
-    ("Order qty Q (units)", "=IF(B20>0,MIN(B20,MaxWeeksSupply*B10),0)", "#,##0.0",
+    ("Order qty Q (units)", "=IF(B22>0,MIN(B22,MaxWeeksSupply*B10),0)", "#,##0.0",
      "MIN(EOQ, Wmax x d)", "EOQ capped at the weeks of supply a shelf can hold"),
-    ("Avg inventory (units)", "=B21/2+B15", "#,##0.0", "Q / 2 + SS", "Cycle stock plus safety stock"),
-    ("Annual cost ($)", "=B19*B22+IF(B21>0,OrderCost*B18/B21,0)", "$#,##0.00",
+    ("Avg inventory (units)", "=B23/2+B17+B10*B13/2", "#,##0.0", "Q / 2 + SS + d x R / 2",
+     "Cycle stock + safety stock + half a review period of demand"),
+    ("Annual cost ($)", "=B21*B24+IF(B23>0,OrderCost*B20/B23,0)", "$#,##0.00",
      "H x avg inv + S x D / Q", "Holding plus ordering cost per year"),
     ("Check vs SKU_Policy total cost", look("U"), "$#,##0.00", "lookup", "Should equal the row above"),
 ]
 for k, (lab, f, fmt, formula_txt, meaning) in enumerate(steps, start=7):
     e[f"A{k}"], e[f"B{k}"], e[f"C{k}"], e[f"D{k}"] = lab, f, formula_txt, meaning
     e[f"B{k}"].number_format = fmt
-    e[f"B{k}"].font = GREEN if f.startswith("=INDEX") or f in ("=LeadTime", "=z") else BLACK
+    e[f"B{k}"].font = GREEN if f.startswith("=INDEX") or f in ("=LeadTime", "=ReviewPeriod", "=z") else BLACK
     for c in "ACD":
         e[f"{c}{k}"].font = BLACK
     for c in "ABCD":
